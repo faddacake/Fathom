@@ -156,7 +156,7 @@ export async function grantWeeklyCredits(
   await redis.set(key, allocated, { ex: ttl, nx: true });
 
   // Sync allocation to Supabase for billing audit
-  await (supabase as any).from('api_usage').upsert({
+  await getSupabase().from('api_usage').upsert({
     user_id:        userId,
     week_start:     ws,
     credits_used:   0,
@@ -234,7 +234,7 @@ async function updateUsageRecord(
   cost: number
 ): Promise<void> {
   // Use a raw SQL upsert to atomically increment the jsonb endpoint_counts
-  await (supabase as any).rpc('increment_api_usage', {
+  await getSupabase().rpc('increment_api_usage', {
     p_user_id:   userId,
     p_week_start: weekStart,
     p_endpoint:   endpoint,
