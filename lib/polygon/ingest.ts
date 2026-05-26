@@ -306,7 +306,7 @@ let isConnected = false;
 function connect(): void {
   console.log('[ingest] connecting to Polygon WebSocket...');
  
-  ws = new WebSocket(WS_URL);
+  ws = new WebSocketLib(WS_URL);
  
   ws.on('open', () => {
     console.log('[ingest] connected');
