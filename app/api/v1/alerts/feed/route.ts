@@ -60,11 +60,12 @@ export const GET = withApiAuth('/v1/alerts/feed', async (req, ctx) => {
 
   // Sort by most recent
   results.sort((a, b) => {
-    const ta = 'timestamp' in a.payload ? a.payload.timestamp :
-               'disclosureDate' in a.payload ? a.payload.disclosureDate : '';
-    const tb = 'timestamp' in b.payload ? b.payload.timestamp :
-               'disclosureDate' in b.payload ? b.payload.disclosureDate : '';
-    return tb.localeCompare(ta);
+    const getTime = (p: typeof a.payload): string => {
+      if ('timestamp' in p && p.timestamp) return p.timestamp as string;
+      if ('disclosureDate' in p && (p as any).disclosureDate) return (p as any).disclosureDate as string;
+      return '';
+    };
+    return getTime(b.payload).localeCompare(getTime(a.payload));
   });
 
   // Apply daily cap for free tier
