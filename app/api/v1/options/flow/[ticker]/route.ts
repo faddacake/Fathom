@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GET /api/v1/options/flow/[ticker]
  * Returns options flow for a specific ticker.

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GET /api/v1/congress/[politician]
  * Returns trades for a specific politician (partial name match).

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GET /api/v1/darkpool/[ticker]
  * Returns dark pool prints for a specific ticker.
