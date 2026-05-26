@@ -106,16 +106,26 @@ export interface Database {
         Insert: Partial<Database['public']['Tables']['api_usage']['Row']>
         Update: Partial<Database['public']['Tables']['api_usage']['Row']>
       }
-      stripe_events: {
-        Row: {
-          stripe_event_id: string
-          event_type: string
-          processed_at: string
-          payload: Json | null
-        }
-        Insert: Partial<Database['public']['Tables']['stripe_events']['Row']>
-        Update: Partial<Database['public']['Tables']['stripe_events']['Row']>
-      }
+        stripe_events: {
+          Row: {
+            stripe_event_id: string
+            event_type: string
+            processed_at: string
+            payload: Json | null
+            }
+          Insert: {
+            stripe_event_id: string
+            event_type: string
+            processed_at?: string
+            payload?: Json | null
+            }
+          Update: Partial<{
+            stripe_event_id: string
+            event_type: string
+            processed_at?: string
+            payload?: Json | null
+            }>
+          }
     }
     Views: {}
     Functions: {}
