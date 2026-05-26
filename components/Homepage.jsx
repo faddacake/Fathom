@@ -873,7 +873,7 @@ export default function Homepage() {
           </p>
 
           <div className="hero-actions">
-            <button className="btn-primary" onClick={() => window.location.href=`/sign-up`} onClick={() => window.location.href='/sign-up'}>Start Free — No Card</button>
+            <button className="btn-primary" onClick={() => window.location.href='/sign-up'}>Start Free — No Card</button>
             <button className="btn-ghost">
               <span>▶</span> Watch 2-min demo
             </button>
@@ -1098,7 +1098,7 @@ export default function Homepage() {
             ))}
           </div>
           <div style={{textAlign:"center"}}>
-            <button className="btn-primary" onClick={() => window.location.href=`/sign-up`} style={{fontSize:"14px",padding:"14px 36px"}} onClick={() => window.location.href='/pricing'}>
+            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}} onClick={() => window.location.href='/pricing'}>
               See Full Pricing + API Plans →
             </button>
           </div>
@@ -1114,7 +1114,7 @@ export default function Homepage() {
           Free account. No credit card. Six fathoms of data in 60 seconds.
         </p>
         <div className="final-cta-actions">
-        <button className="btn-primary" onClick={() => window.location.href=`/sign-up`} style={{fontSize:"15px",padding:"15px 36px"}} onClick={() => window.location.href='/sign-up'}>
+        <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}} onClick={() => window.location.href='/sign-up'}>
         Create Free Account
         </button>
           <button className="btn-ghost" style={{fontSize:"15px",padding:"15px 28px"}}>
