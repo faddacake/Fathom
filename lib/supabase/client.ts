@@ -25,7 +25,9 @@ if (!supabaseUrl || !supabaseAnon) {
   console.warn('Missing Supabase environment variables');
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnon);
+export const supabase = typeof window !== 'undefined' && supabaseUrl && supabaseAnon
+  ? createClient<Database>(supabaseUrl, supabaseAnon)
+  : null as any;
 
 // ─── ADMIN CLIENT (server-only, never ship to browser) ────────────────────────
 export function getSupabaseAdmin() {
