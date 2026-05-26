@@ -19,7 +19,7 @@
 import WebSocket from 'ws';
 import { createClient } from '@supabase/supabase-js';
 import { Redis } from '@upstash/redis';
-import type { OptionsFlow, DarkPoolPrint, FlowOrderType, FlowSentiment, DarkPoolSignal } from './types';
+import type { OptionsFlow, DarkPoolPrint, FlowOrderType, FlowSentiment, DarkPoolSignal } from '@/types';
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const POLYGON_KEY    = process.env.POLYGON_API_KEY!;
