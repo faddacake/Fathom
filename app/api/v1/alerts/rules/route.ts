@@ -84,7 +84,7 @@ export const DELETE = withApiAuth('/v1/alerts/feed', async (req, ctx) => {
   // Soft delete — set isActive = false
   await db
     .from('alert_rules')
-    .update({ isActive: false })
+    .update({ isActive: false } as any)
     .eq('id', id);
 
   return ok({ deleted: id }, { creditsUsed: 0, creditsLeft: ctx.creditsLeft });
