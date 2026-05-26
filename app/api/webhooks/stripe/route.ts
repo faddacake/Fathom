@@ -89,7 +89,7 @@ async function isAlreadyProcessed(eventId: string): Promise<boolean> {
 }
 
 async function markProcessed(eventId: string, eventType: string): Promise<void> {
-  await supabase.from('stripe_events').insert({
+  await (supabase as any).from('stripe_events').insert({
     stripe_event_id: eventId,
     event_type: eventType,
   });
