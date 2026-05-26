@@ -162,7 +162,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription): Promise<void
   // If user doesn't exist yet (race condition with Clerk webhook), create them
   if (!user) {
     const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-    if (customer.deleted || !customer.email) return;
+    if (!customer.email) return;
 
     const { data } = await supabase
       .from('users')
