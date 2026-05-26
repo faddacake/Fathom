@@ -128,7 +128,33 @@ export interface Database {
           }
     }
     Views: {}
-    Functions: {}
+    Functions: {
+      increment_api_usage: {
+        Args: {
+          p_user_id: string
+          p_week_start: string
+          p_endpoint: string
+          p_cost: number
+        }
+        Returns: void
+      }
+      update_user_tier: {
+        Args: {
+          p_stripe_customer_id: string
+          p_product: string
+          p_new_tier: string
+          p_sub_id: string | null
+        }
+        Returns: void
+      }
+      upsert_user_from_clerk: {
+        Args: {
+          p_clerk_id: string
+          p_email: string
+        }
+        Returns: unknown
+      }
+    }
     Enums: {}
   }
 }
