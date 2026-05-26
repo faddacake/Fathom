@@ -1,14 +1,13 @@
-// app/api/flow/route.ts
-// ─────────────────────────────────────────────────────────────
-// Options flow feed API endpoint.
-// Reads from Supabase flow_cache with tier-based freshness.
-// ─────────────────────────────────────────────────────────────
- 
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+// app/api/webhooks/stripe/route.ts
+import { headers } from 'next/headers';
+import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import { checkCredits } from '@/lib/credits';
- 
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-04-10',
+});
+
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,80 +15,173 @@ function getSupabase() {
     { auth: { persistSession: false } }
   );
 }
- 
-export async function GET(req: NextRequest) {
-  const { userId } = auth();
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+const PLATFORM_PRICE_TIERS: Record<string, string> = {
+  [process.env.STRIPE_PRICE_PLATFORM_STARTER_MONTHLY!]: 'starter',
+  [process.env.STRIPE_PRICE_PLATFORM_STARTER_ANNUAL!]:  'starter',
+  [process.env.STRIPE_PRICE_PLATFORM_PRO_MONTHLY!]:     'pro',
+  [process.env.STRIPE_PRICE_PLATFORM_PRO_ANNUAL!]:      'pro',
+  [process.env.STRIPE_PRICE_PLATFORM_WHALE_MONTHLY!]:   'whale',
+  [process.env.STRIPE_PRICE_PLATFORM_WHALE_ANNUAL!]:    'whale',
+};
+
+const API_PRICE_TIERS: Record<string, string> = {
+  [process.env.STRIPE_PRICE_API_500!]:   'basic',
+  [process.env.STRIPE_PRICE_API_2500!]:  'pro',
+  [process.env.STRIPE_PRICE_API_10000!]: 'institutional',
+};
+
+const BOT_PRICE_TIERS: Record<string, string> = {
+  [process.env.STRIPE_PRICE_BOT_BASIC!]:  'basic',
+  [process.env.STRIPE_PRICE_BOT_PRO!]:    'pro',
+  [process.env.STRIPE_PRICE_BOT_SERVER!]: 'server',
+};
+
+const DISCORD_ROLES: Record<string, string | undefined> = {
+  'platform:starter': process.env.DISCORD_ROLE_PLATFORM_STARTER,
+  'platform:pro':     process.env.DISCORD_ROLE_PLATFORM_PRO,
+  'platform:whale':   process.env.DISCORD_ROLE_PLATFORM_WHALE,
+  'bot:basic':        process.env.DISCORD_ROLE_BOT_BASIC,
+  'bot:pro':          process.env.DISCORD_ROLE_BOT_PRO,
+  'bot:server':       process.env.DISCORD_ROLE_BOT_SERVER,
+};
+
+function classifyPrice(priceId: string): { product: 'platform' | 'api' | 'bot' | null; tier: string | null } {
+  if (PLATFORM_PRICE_TIERS[priceId]) return { product: 'platform', tier: PLATFORM_PRICE_TIERS[priceId] };
+  if (API_PRICE_TIERS[priceId])      return { product: 'api',      tier: API_PRICE_TIERS[priceId] };
+  if (BOT_PRICE_TIERS[priceId])      return { product: 'bot',      tier: BOT_PRICE_TIERS[priceId] };
+  return { product: null, tier: null };
+}
+
+async function isAlreadyProcessed(eventId: string): Promise<boolean> {
+  const { data } = await getSupabase().from('stripe_events').select('stripe_event_id').eq('stripe_event_id', eventId).maybeSingle();
+  return !!data;
+}
+
+async function markProcessed(eventId: string, eventType: string): Promise<void> {
+  await getSupabase().from('stripe_events').insert({ stripe_event_id: eventId, event_type: eventType });
+}
+
+async function getUserByCustomerId(customerId: string) {
+  const { data } = await getSupabase().from('users').select('*').eq('stripe_customer_id', customerId).maybeSingle();
+  return data;
+}
+
+async function syncDiscordRole(discordId: string, roleKey: string, action: 'add' | 'remove'): Promise<void> {
+  const roleId = DISCORD_ROLES[roleKey];
+  if (!roleId || !process.env.BOT_INTERNAL_URL) return;
+  try {
+    await fetch(`${process.env.BOT_INTERNAL_URL}/roles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.BOT_INTERNAL_SECRET}` },
+      body: JSON.stringify({ discordId, roleId, action }),
+    });
+  } catch (err) { console.error('[discord-role-sync] failed:', err); }
+}
+
+async function sendDiscordDM(discordId: string, message: string): Promise<void> {
+  if (!process.env.BOT_INTERNAL_URL) return;
+  try {
+    await fetch(`${process.env.BOT_INTERNAL_URL}/dm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.BOT_INTERNAL_SECRET}` },
+      body: JSON.stringify({ discordId, message }),
+    });
+  } catch (err) { console.error('[discord-dm] failed:', err); }
+}
+
+async function handleSubscriptionCreated(sub: Stripe.Subscription): Promise<void> {
+  const customerId = sub.customer as string;
+  const priceId = sub.items.data[0]?.price.id;
+  if (!priceId) return;
+  const { product, tier } = classifyPrice(priceId);
+  if (!product || !tier) return;
+
+  let user = await getUserByCustomerId(customerId);
+  if (!user) {
+    const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+    if (!customer.email) return;
+    const { data } = await getSupabase().from('users').insert({ clerk_id: `stripe:${customerId}`, email: customer.email, stripe_customer_id: customerId }).select().single();
+    user = data;
   }
- 
-  // Get user + tier
-  const db = getSupabase();
-  const { data: user } = await db
-    .from('users')
-    .select('id, platform_tier, api_tier')
-    .eq('clerk_id', userId)
-    .maybeSingle();
- 
-  const platformTier = user?.platform_tier ?? 'free';
-  const apiTier      = user?.api_tier ?? 'free';
-  const userId_db    = user?.id;
- 
-  // Check API credits if this is an API key request
-  const apiKey = req.headers.get('x-api-key');
-  if (apiKey && userId_db) {
-    const creditCheck = await checkCredits(userId_db, 'flow', apiTier);
-    if (!creditCheck.allowed) return creditCheck.response;
+  if (!user) return;
+
+  await getSupabase().rpc('update_user_tier', { p_stripe_customer_id: customerId, p_product: product, p_new_tier: tier, p_sub_id: sub.id });
+  if (user.discord_id && (product === 'platform' || product === 'bot')) await syncDiscordRole(user.discord_id, `${product}:${tier}`, 'add');
+  if (sub.discount?.coupon?.id === 'FOUNDER40') await getSupabase().from('users').update({ is_founding_member: true }).eq('id', user.id);
+}
+
+async function handleSubscriptionUpdated(sub: Stripe.Subscription): Promise<void> {
+  const customerId = sub.customer as string;
+  const priceId = sub.items.data[0]?.price.id;
+  if (!priceId) return;
+  const { product, tier } = classifyPrice(priceId);
+  if (!product || !tier) return;
+  const user = await getUserByCustomerId(customerId);
+  if (!user) return;
+  const oldTier = product === 'platform' ? user.platform_tier : product === 'api' ? user.api_tier : user.bot_tier;
+  await getSupabase().rpc('update_user_tier', { p_stripe_customer_id: customerId, p_product: product, p_new_tier: tier, p_sub_id: sub.id });
+  if (user.discord_id && (product === 'platform' || product === 'bot')) {
+    if (oldTier && oldTier !== 'free') await syncDiscordRole(user.discord_id, `${product}:${oldTier}`, 'remove');
+    await syncDiscordRole(user.discord_id, `${product}:${tier}`, 'add');
   }
- 
-  // Parse query params
-  const { searchParams } = new URL(req.url);
-  const ticker      = searchParams.get('ticker') ?? undefined;
-  const flowType    = searchParams.get('type') as 'CALL' | 'PUT' | undefined;
-  const orderType   = searchParams.get('order') as 'SWEEP' | 'BLOCK' | 'SPLIT' | undefined;
-  const minPremium  = searchParams.get('min_premium') ? Number(searchParams.get('min_premium')) : undefined;
-  const unusualOnly = searchParams.get('unusual') === 'true';
-  const limit       = Math.min(Number(searchParams.get('limit') ?? 50), 200);
-  const offset      = Number(searchParams.get('offset') ?? 0);
- 
-  // Build query
-  let query = db
-    .from('flow_cache')
-    .select('*')
-    .order('traded_at', { ascending: false })
-    .limit(limit)
-    .range(offset, offset + limit - 1);
- 
-  // Free tier: 15 min delay
-  if (platformTier === 'free') {
-    const delayedTime = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    query = query.lt('traded_at', delayedTime);
+}
+
+async function handleSubscriptionDeleted(sub: Stripe.Subscription): Promise<void> {
+  const customerId = sub.customer as string;
+  const priceId = sub.items.data[0]?.price.id;
+  if (!priceId) return;
+  const { product } = classifyPrice(priceId);
+  if (!product) return;
+  const user = await getUserByCustomerId(customerId);
+  if (!user) return;
+  const oldTier = product === 'platform' ? user.platform_tier : product === 'api' ? user.api_tier : user.bot_tier;
+  await getSupabase().rpc('update_user_tier', { p_stripe_customer_id: customerId, p_product: product, p_new_tier: 'free', p_sub_id: null });
+  if (user.discord_id && oldTier && oldTier !== 'free') {
+    await syncDiscordRole(user.discord_id, `${product}:${oldTier}`, 'remove');
+    await sendDiscordDM(user.discord_id, `Your Fathom ${product} subscription has been cancelled.\n\nUse code COMEBACK20 for 20% off.\nhttps://fathomtrade.com/pricing`);
   }
- 
-  if (ticker)      query = query.eq('ticker', ticker.toUpperCase());
-  if (flowType)    query = query.eq('flow_type', flowType);
-  if (orderType)   query = query.eq('order_type', orderType);
-  if (minPremium)  query = query.gte('total_premium', minPremium);
-  if (unusualOnly) query = query.eq('is_unusual', true);
- 
-  const { data, error } = await query;
- 
-  if (error) {
-    console.error('[api/flow] query error:', error.message);
-    return NextResponse.json({ error: 'Database error' }, { status: 500 });
+}
+
+async function handlePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
+  const user = await getUserByCustomerId(invoice.customer as string);
+  if (!user?.discord_id) return;
+  await sendDiscordDM(user.discord_id, `⚠️ Payment failed for your Fathom subscription.\n\nUpdate billing: https://fathomtrade.com/billing`);
+}
+
+async function handleTrialWillEnd(sub: Stripe.Subscription): Promise<void> {
+  const user = await getUserByCustomerId(sub.customer as string);
+  if (!user?.discord_id) return;
+  const trialEnd = new Date((sub.trial_end ?? 0) * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  await sendDiscordDM(user.discord_id, `Your Fathom trial ends on ${trialEnd}.\nhttps://fathomtrade.com/billing`);
+}
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const signature = headers().get('stripe-signature');
+  if (!signature) return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch (err: any) {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
- 
-  return NextResponse.json({
-    data,
-    meta: {
-      count:        data?.length ?? 0,
-      tier:         platformTier,
-      delayed:      platformTier === 'free',
-      delay_minutes: platformTier === 'free' ? 15 : 0,
-    },
-  }, {
-    headers: {
-      'Cache-Control': platformTier === 'free' ? 's-maxage=60' : 's-maxage=3',
-    },
-  });
+
+  if (await isAlreadyProcessed(event.id)) return NextResponse.json({ received: true });
+
+  try {
+    switch (event.type) {
+      case 'customer.subscription.created':  await handleSubscriptionCreated(event.data.object as Stripe.Subscription); break;
+      case 'customer.subscription.updated':  await handleSubscriptionUpdated(event.data.object as Stripe.Subscription); break;
+      case 'customer.subscription.deleted':  await handleSubscriptionDeleted(event.data.object as Stripe.Subscription); break;
+      case 'invoice.payment_failed':         await handlePaymentFailed(event.data.object as Stripe.Invoice); break;
+      case 'customer.subscription.trial_will_end': await handleTrialWillEnd(event.data.object as Stripe.Subscription); break;
+    }
+    await markProcessed(event.id, event.type);
+    return NextResponse.json({ received: true });
+  } catch (err: any) {
+    console.error(`[stripe-webhook] error:`, err);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
 }
