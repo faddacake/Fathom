@@ -3,6 +3,6 @@ builder = "nixpacks"
 buildCommand = "cd fathom-bot && npm install"
 
 [deploy]
-startCommand = "node fathom-bot/bot.js"
+startCommand = "cd fathom-bot && node bot.js"
 restartPolicyType = "always"
 restartPolicyMaxRetries = 10
