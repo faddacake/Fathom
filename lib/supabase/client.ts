@@ -10,7 +10,7 @@ export type Database = {
       dark_pool:   { Row: DarkPoolPrint;  Insert: Omit<DarkPoolPrint, 'id'>;   Update: Partial<DarkPoolPrint> };
       congress:    { Row: CongressTrade;  Insert: Omit<CongressTrade, 'id'>;   Update: Partial<CongressTrade> };
       alert_rules: { Row: AlertRule;      Insert: Omit<AlertRule, 'id' | 'createdAt'>; Update: Partial<AlertRule> };
-      alert_log:   { Row: AlertLog;       Insert: Omit<AlertLog, 'id'>;        Update: never };
+      alert_log:   { Row: AlertLog;       Insert: Omit<AlertLog, 'id'>;        Update: Partial<FathomUser> };
       api_usage:   { Row: ApiUsage;       Insert: ApiUsage;                    Update: Partial<ApiUsage> };
     };
   };
