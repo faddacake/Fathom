@@ -156,7 +156,7 @@ export async function grantWeeklyCredits(
   await redis.set(key, allocated, { ex: ttl, nx: true });
 
   // Sync allocation to Supabase for billing audit
-  await supabase.from('api_usage').upsert({
+  await (supabase as any).from('api_usage').upsert({
     user_id:        userId,
     week_start:     ws,
     credits_used:   0,
