@@ -10,10 +10,10 @@
 // Start: npx ts-node lib/polygon/ingest.ts
 // ─────────────────────────────────────────────────────────────
  
-import WebSocket from 'ws';
 import { createClient } from '@supabase/supabase-js';
 import * as https from 'https';
 import * as dotenv from 'dotenv';
+import WebSocketLib from 'ws';
  
 dotenv.config({ path: '.env.local' });
  
@@ -21,7 +21,10 @@ dotenv.config({ path: '.env.local' });
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
+  {
+    auth: { persistSession: false },
+    realtime: { transport: WebSocketLib as any },
+  }
 );
  
 // ── Config ────────────────────────────────────────────────────
