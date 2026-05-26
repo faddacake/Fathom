@@ -1,0 +1,29 @@
+{
+  "name": "fathom-discord-bot",
+  "version": "1.0.0",
+  "description": "Fathom — We measure what others can't see. Real-time options flow, dark pool, and congress trade alerts for Discord.",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "deploy": "node deploy-commands.js",
+    "deploy:guild": "node deploy-commands.js --guild"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "@discordjs/rest": "^2.3.0",
+    "discord-api-types": "^0.37.97",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "winston": "^3.14.2",
+    "node-cache": "^5.1.2",
+    "p-limit": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
