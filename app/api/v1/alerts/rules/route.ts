@@ -50,7 +50,7 @@ export const POST = withApiAuth('/v1/alerts/feed', async (req, ctx) => {
       premiumMin:  body.premiumMin ?? null,
       sweepOnly:   body.sweepOnly ?? false,
       isActive:    true,
-    })
+    } as any)
     .select()
     .single();
 
