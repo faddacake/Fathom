@@ -80,7 +80,7 @@ function classifyPrice(priceId: string): {
 }
 
 async function isAlreadyProcessed(eventId: string): Promise<boolean> {
-  const { data } = await (supabase as any)
+  const { data } = await getSupabase()
     .from('stripe_events')
     .select('stripe_event_id')
     .eq('stripe_event_id', eventId)
@@ -89,14 +89,14 @@ async function isAlreadyProcessed(eventId: string): Promise<boolean> {
 }
 
 async function markProcessed(eventId: string, eventType: string): Promise<void> {
-  await (supabase as any).from('stripe_events').insert({
+  await getSupabase().from('stripe_events').insert({
     stripe_event_id: eventId,
     event_type: eventType,
   });
 }
 
 async function getUserByCustomerId(customerId: string) {
-  const { data } = await (supabase as any)
+  const { data } = await getSupabase()
     .from('users')
     .select('*')
     .eq('stripe_customer_id', customerId)
@@ -164,7 +164,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription): Promise<void
     const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
     if (!customer.email) return;
 
-    const { data } = await (supabase as any)
+    const { data } = await getSupabase()
       .from('users')
       .insert({ clerk_id: `stripe:${customerId}`, email: customer.email, stripe_customer_id: customerId })
       .select()
@@ -175,7 +175,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription): Promise<void
   if (!user) return;
 
   // Update tier in DB
-  await (supabase as any).rpc('update_user_tier', {
+  await getSupabase().rpc('update_user_tier', {
     p_stripe_customer_id: customerId,
     p_product:            product,
     p_new_tier:           tier,
@@ -189,7 +189,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription): Promise<void
 
   // Check founding member coupon
   if (sub.discount?.coupon?.id === 'FOUNDER40') {
-    await (supabase as any)
+    await getSupabase()
       .from('users')
       .update({ is_founding_member: true })
       .eq('id', user.id);
@@ -218,7 +218,7 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription): Promise<void
                 : product === 'api'      ? user.api_tier
                 : user.bot_tier;
 
-  await (supabase as any).rpc('update_user_tier', {
+  await getSupabase().rpc('update_user_tier', {
     p_stripe_customer_id: customerId,
     p_product:            product,
     p_new_tier:           tier,
@@ -251,7 +251,7 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription): Promise<void
                 : user.bot_tier;
 
   // Downgrade to free
-  await (supabase as any).rpc('update_user_tier', {
+  await getSupabase().rpc('update_user_tier', {
     p_stripe_customer_id: customerId,
     p_product:            product,
     p_new_tier:           'free',
