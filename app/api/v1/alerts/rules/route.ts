@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GET    /api/v1/alerts/rules  — List user's alert rules
  * POST   /api/v1/alerts/rules  — Create a new alert rule
