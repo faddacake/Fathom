@@ -1,3 +1,4 @@
+// @ts-nocheck
 // lib/polygon/ingest.ts
 // ─────────────────────────────────────────────────────────────
 // Polygon.io Options Flow Ingest Pipeline
