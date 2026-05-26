@@ -51,7 +51,7 @@ export async function upsertUser(user: Database['public']['Tables']['users']['In
   const db = getSupabaseAdmin();
   const { data, error } = await db
     .from('users')
-    .upsert({ ...user, updatedAt: new Date().toISOString() }, { onConflict: 'clerkId' })
+    .upsert({ ...user }, { onConflict: 'clerkId' })
     .select()
     .single();
   if (error) throw error;
