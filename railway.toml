@@ -1,0 +1,10 @@
+# railway.toml — Fathom Ingest Pipeline
+# Deploy this as a separate Railway service from the Next.js app
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npx ts-node --project tsconfig.ingest.json lib/polygon/ingest.ts"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10

@@ -1,317 +1,205 @@
-import Stripe from 'stripe';
-import { updateUserTier, getUserByClerkId, upsertUser } from '@/lib/supabase/client';
-import { initCredits } from '@/lib/redis/credits';
-import type { PlatformTier, ApiTier, BotTier } from '@/types';
+// lib/polygon/client.ts
+// ─────────────────────────────────────────────────────────────
+// Polygon.io REST client for Next.js API routes.
+// Used by dashboard API endpoints to serve cached flow data.
+// ─────────────────────────────────────────────────────────────
 
-// ─── CLIENT ───────────────────────────────────────────────────────────────────
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-04-10',
-  typescript:  true,
-});
+const POLYGON_BASE = 'https://api.polygon.io';
+const API_KEY      = process.env.POLYGON_API_KEY!;
 
-// ─── PRICE ID → TIER MAPS ─────────────────────────────────────────────────────
-const PLATFORM_PRICE_TO_TIER: Record<string, PlatformTier> = {
-  [process.env.STRIPE_PRICE_STARTER_MONTHLY!]: 'starter',
-  [process.env.STRIPE_PRICE_STARTER_ANNUAL!]:  'starter',
-  [process.env.STRIPE_PRICE_PRO_MONTHLY!]:     'pro',
-  [process.env.STRIPE_PRICE_PRO_ANNUAL!]:      'pro',
-  [process.env.STRIPE_PRICE_WHALE_MONTHLY!]:   'whale',
-  [process.env.STRIPE_PRICE_WHALE_ANNUAL!]:    'whale',
-};
+// ── Generic fetch wrapper ─────────────────────────────────────
 
-const API_PRICE_TO_TIER: Record<string, ApiTier> = {
-  [process.env.STRIPE_PRICE_API_500!]:   'api_500',
-  [process.env.STRIPE_PRICE_API_2500!]:  'api_2500',
-  [process.env.STRIPE_PRICE_API_10000!]: 'api_10000',
-};
+async function polygonFetch<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
+  const url = new URL(`${POLYGON_BASE}${path}`);
+  url.searchParams.set('apiKey', API_KEY);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
 
-const BOT_PRICE_TO_TIER: Record<string, BotTier> = {
-  [process.env.STRIPE_PRICE_BOT_BASIC!]:  'bot_basic',
-  [process.env.STRIPE_PRICE_BOT_PRO!]:    'bot_pro',
-  [process.env.STRIPE_PRICE_BOT_SERVER!]: 'bot_server',
-};
+  const res = await fetch(url.toString(), {
+    next: { revalidate: 3 }, // Next.js ISR — 3s cache
+  });
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-function getPriceId(subscription: Stripe.Subscription): string {
-  return subscription.items.data[0]?.price.id ?? '';
+  if (!res.ok) {
+    throw new Error(`Polygon API error: ${res.status} ${res.statusText} — ${path}`);
+  }
+
+  return res.json();
 }
 
-function resolveTiers(priceId: string): {
-  platformTier?: PlatformTier;
-  apiTier?:      ApiTier;
-  botTier?:      BotTier;
-} {
+// ── Market snapshot ───────────────────────────────────────────
+
+export interface MarketSnapshot {
+  spy:  TickerSnapshot;
+  qqq:  TickerSnapshot;
+  iwm:  TickerSnapshot;
+  vix:  TickerSnapshot;
+  qqq3: TickerSnapshot;
+}
+
+export interface TickerSnapshot {
+  ticker:  string;
+  price:   number;
+  change:  number;
+  changePct: number;
+}
+
+export async function getMarketSnapshot(): Promise<MarketSnapshot> {
+  const tickers = ['SPY', 'QQQ', 'IWM', 'VIXY'];
+
+  const data = await polygonFetch<any>('/v2/snapshot/locale/us/markets/stocks/tickers', {
+    tickers: tickers.join(','),
+  });
+
+  const snap: Record<string, TickerSnapshot> = {};
+
+  for (const item of data.tickers ?? []) {
+    snap[item.ticker] = {
+      ticker:    item.ticker,
+      price:     item.day?.c ?? item.prevDay?.c ?? 0,
+      change:    item.todaysChange ?? 0,
+      changePct: item.todaysChangePerc ?? 0,
+    };
+  }
+
   return {
-    platformTier: PLATFORM_PRICE_TO_TIER[priceId],
-    apiTier:      API_PRICE_TO_TIER[priceId],
-    botTier:      BOT_PRICE_TO_TIER[priceId],
+    spy:  snap['SPY']  ?? { ticker: 'SPY',  price: 0, change: 0, changePct: 0 },
+    qqq:  snap['QQQ']  ?? { ticker: 'QQQ',  price: 0, change: 0, changePct: 0 },
+    iwm:  snap['IWM']  ?? { ticker: 'IWM',  price: 0, change: 0, changePct: 0 },
+    vix:  snap['VIXY'] ?? { ticker: 'VIX',  price: 0, change: 0, changePct: 0 },
+    qqq3: snap['QQQ']  ?? { ticker: 'QQQ',  price: 0, change: 0, changePct: 0 },
   };
 }
 
-async function getClerkIdFromCustomer(customerId: string): Promise<string | null> {
-  const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
-  return (customer.metadata?.clerkId as string) ?? null;
+// ── Options chain for a ticker ────────────────────────────────
+
+export interface OptionsContract {
+  ticker:          string;
+  strike:          number;
+  expiry:          string;
+  type:            'call' | 'put';
+  iv:              number;
+  delta:           number;
+  gamma:           number;
+  open_interest:   number;
+  volume:          number;
+  last_price:      number;
 }
 
-// ─── DISCORD ROLE SYNC ────────────────────────────────────────────────────────
-// Called after tier updates to sync Discord roles via bot API
-async function syncDiscordRole(discordId: string, tier: PlatformTier): Promise<void> {
-  if (!discordId) return;
-  try {
-    const res = await fetch(`${process.env.BOT_API_URL}/sync-role`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.BOT_API_SECRET}`,
-      },
-      body: JSON.stringify({ discordId, tier }),
-    });
-    if (!res.ok) console.error('[Discord] Role sync failed:', await res.text());
-  } catch (err) {
-    console.error('[Discord] Role sync error:', err);
-  }
+export async function getOptionsChain(ticker: string, expiry?: string): Promise<OptionsContract[]> {
+  const params: Record<string, string | number> = {
+    underlying_asset: ticker,
+    limit: 250,
+    order: 'asc',
+    sort: 'strike_price',
+  };
+
+  if (expiry) params['expiration_date'] = expiry;
+
+  const data = await polygonFetch<any>('/v3/snapshot/options/' + ticker, params);
+
+  return (data.results ?? []).map((r: any) => ({
+    ticker:        r.details?.ticker ?? '',
+    strike:        r.details?.strike_price ?? 0,
+    expiry:        r.details?.expiration_date ?? '',
+    type:          r.details?.contract_type ?? 'call',
+    iv:            r.greeks?.iv ?? r.implied_volatility ?? 0,
+    delta:         r.greeks?.delta ?? 0,
+    gamma:         r.greeks?.gamma ?? 0,
+    open_interest: r.open_interest ?? 0,
+    volume:        r.day?.volume ?? 0,
+    last_price:    r.last_quote?.midpoint ?? r.day?.last_price ?? 0,
+  }));
 }
 
-// ─── WEBHOOK HANDLER ──────────────────────────────────────────────────────────
-export async function handleStripeWebhook(
-  body: string,
-  signature: string
-): Promise<{ status: number; message: string }> {
-  let event: Stripe.Event;
+// ── GEX calculation ───────────────────────────────────────────
 
-  // Verify signature
-  try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    );
-  } catch (err) {
-    console.error('[Stripe] Webhook signature verification failed:', err);
-    return { status: 400, message: 'Invalid signature' };
-  }
+export interface GEXLevel {
+  strike: number;
+  gex:    number; // in dollars
+  calls:  number;
+  puts:   number;
+}
 
-  console.log(`[Stripe] Event: ${event.type} (${event.id})`);
+export interface GEXData {
+  ticker:     string;
+  spotPrice:  number;
+  netGamma:   number;
+  flipLevel:  number;
+  levels:     GEXLevel[];
+}
 
-  try {
-    switch (event.type) {
+export async function getGEX(ticker: string): Promise<GEXData> {
+  const chain = await getOptionsChain(ticker);
 
-      // ── SUBSCRIPTION CREATED ────────────────────────────────────────────────
-      case 'customer.subscription.created': {
-        const sub        = event.data.object as Stripe.Subscription;
-        const customerId = sub.customer as string;
-        const priceId    = getPriceId(sub);
-        const clerkId    = await getClerkIdFromCustomer(customerId);
+  // Current price from snapshot
+  const snapData = await polygonFetch<any>(`/v2/snapshot/locale/us/markets/stocks/tickers/${ticker}`);
+  const spotPrice = snapData.ticker?.day?.c ?? snapData.ticker?.prevDay?.c ?? 0;
 
-        if (!clerkId) {
-          console.error('[Stripe] No clerkId on customer:', customerId);
-          break;
-        }
+  // Group by strike
+  const strikeMap = new Map<number, { calls: number; puts: number }>();
 
-        const { platformTier, apiTier, botTier } = resolveTiers(priceId);
-
-        // Upsert user in Supabase
-        await upsertUser({
-          clerkId,
-          stripeCustomerId: customerId,
-          discordId:        null,
-          email:            '',         // populated by Clerk webhook
-          platformTier:     platformTier ?? 'free',
-          apiTier:          apiTier ?? null,
-          botTier:          botTier ?? null,
-        });
-
-        // Init credits in Redis
-        if (platformTier && platformTier !== 'free') {
-          await initCredits(clerkId, platformTier);
-        }
-        if (apiTier) {
-          await initCredits(clerkId, apiTier);
-        }
-
-        // Sync Discord role
-        const user = await getUserByClerkId(clerkId);
-        if (user?.discordId && platformTier) {
-          await syncDiscordRole(user.discordId, platformTier);
-        }
-
-        console.log(`[Stripe] Subscription created: ${clerkId} → ${platformTier ?? apiTier ?? botTier}`);
-        break;
-      }
-
-      // ── SUBSCRIPTION UPDATED (tier change / renewal) ─────────────────────
-      case 'customer.subscription.updated': {
-        const sub        = event.data.object as Stripe.Subscription;
-        const customerId = sub.customer as string;
-        const priceId    = getPriceId(sub);
-        const clerkId    = await getClerkIdFromCustomer(customerId);
-
-        if (!clerkId) break;
-
-        const { platformTier, apiTier, botTier } = resolveTiers(priceId);
-
-        await updateUserTier(clerkId, {
-          platformTier: platformTier,
-          apiTier:      apiTier,
-          botTier:      botTier,
-        });
-
-        // Re-init credits on renewal
-        if (sub.status === 'active') {
-          if (platformTier && platformTier !== 'free') await initCredits(clerkId, platformTier);
-          if (apiTier) await initCredits(clerkId, apiTier);
-        }
-
-        const user = await getUserByClerkId(clerkId);
-        if (user?.discordId && platformTier) {
-          await syncDiscordRole(user.discordId, platformTier);
-        }
-
-        console.log(`[Stripe] Subscription updated: ${clerkId} → ${platformTier ?? apiTier ?? botTier}`);
-        break;
-      }
-
-      // ── SUBSCRIPTION DELETED (cancellation / non-payment) ────────────────
-      case 'customer.subscription.deleted': {
-        const sub        = event.data.object as Stripe.Subscription;
-        const customerId = sub.customer as string;
-        const priceId    = getPriceId(sub);
-        const clerkId    = await getClerkIdFromCustomer(customerId);
-
-        if (!clerkId) break;
-
-        const { platformTier, apiTier, botTier } = resolveTiers(priceId);
-
-        // Downgrade to free
-        await updateUserTier(clerkId, {
-          platformTier: platformTier    ? 'free' : undefined,
-          apiTier:      apiTier         ? null   : undefined,
-          botTier:      botTier         ? null   : undefined,
-        });
-
-        // Revoke Discord role
-        const user = await getUserByClerkId(clerkId);
-        if (user?.discordId) {
-          await syncDiscordRole(user.discordId, 'free');
-        }
-
-        console.log(`[Stripe] Subscription deleted: ${clerkId} → downgraded to free`);
-        break;
-      }
-
-      // ── PAYMENT FAILED ────────────────────────────────────────────────────
-      case 'invoice.payment_failed': {
-        const invoice    = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-        const clerkId    = await getClerkIdFromCustomer(customerId);
-        if (!clerkId) break;
-
-        // Send Discord DM warning via bot
-        const user = await getUserByClerkId(clerkId);
-        if (user?.discordId) {
-          await fetch(`${process.env.BOT_API_URL}/send-dm`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.BOT_API_SECRET}`,
-            },
-            body: JSON.stringify({
-              discordId: user.discordId,
-              message: `⚠️ **Payment failed** for your Fathom subscription.\n\nYou have a 3-day grace period before your access is downgraded.\n\nUpdate your payment method here: ${process.env.NEXT_PUBLIC_APP_URL}/billing`,
-            }),
-          }).catch(console.error);
-        }
-
-        console.log(`[Stripe] Payment failed: ${clerkId}`);
-        break;
-      }
-
-      // ── PAYMENT SUCCEEDED (credit refresh) ────────────────────────────────
-      case 'invoice.payment_succeeded': {
-        const invoice    = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-        const clerkId    = await getClerkIdFromCustomer(customerId);
-        if (!clerkId) break;
-
-        // Credits are refreshed on subscription.updated — nothing extra needed
-        console.log(`[Stripe] Payment succeeded: ${clerkId}`);
-        break;
-      }
-
-      // ── TRIAL ENDING ──────────────────────────────────────────────────────
-      case 'customer.subscription.trial_will_end': {
-        const sub        = event.data.object as Stripe.Subscription;
-        const customerId = sub.customer as string;
-        const clerkId    = await getClerkIdFromCustomer(customerId);
-        if (!clerkId) break;
-
-        // Send reminder DM
-        const user = await getUserByClerkId(clerkId);
-        if (user?.discordId) {
-          const trialEnd = new Date((sub.trial_end ?? 0) * 1000).toLocaleDateString();
-          await fetch(`${process.env.BOT_API_URL}/send-dm`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.BOT_API_SECRET}`,
-            },
-            body: JSON.stringify({
-              discordId: user.discordId,
-              message: `📅 **Your Fathom trial ends on ${trialEnd}.**\n\nYour payment method will be charged automatically. Manage your subscription at ${process.env.NEXT_PUBLIC_APP_URL}/billing`,
-            }),
-          }).catch(console.error);
-        }
-
-        console.log(`[Stripe] Trial ending: ${clerkId}`);
-        break;
-      }
-
-      default:
-        console.log(`[Stripe] Unhandled event: ${event.type}`);
+  for (const contract of chain) {
+    if (!strikeMap.has(contract.strike)) {
+      strikeMap.set(contract.strike, { calls: 0, puts: 0 });
     }
-  } catch (err) {
-    console.error(`[Stripe] Handler error for ${event.type}:`, err);
-    return { status: 500, message: 'Handler error' };
+    const entry = strikeMap.get(contract.strike)!;
+
+    // GEX = gamma × open_interest × spot^2 × 0.01 × contract_multiplier(100)
+    const gexContrib = contract.gamma * contract.open_interest * spotPrice * spotPrice * 0.01 * 100;
+
+    if (contract.type === 'call') {
+      entry.calls += gexContrib;
+    } else {
+      entry.puts -= gexContrib; // puts are negative gamma for dealers
+    }
   }
 
-  return { status: 200, message: 'OK' };
+  const levels: GEXLevel[] = [];
+  let netGamma = 0;
+
+  for (const [strike, { calls, puts }] of strikeMap) {
+    const gex = calls + puts;
+    netGamma += gex;
+    levels.push({ strike, gex, calls, puts });
+  }
+
+  levels.sort((a, b) => a.strike - b.strike);
+
+  // Gamma flip: find strike where cumulative GEX crosses zero
+  let cumulative = 0;
+  let flipLevel  = spotPrice;
+
+  for (const level of levels) {
+    cumulative += level.gex;
+    if (cumulative >= 0) {
+      flipLevel = level.strike;
+      break;
+    }
+  }
+
+  return {
+    ticker,
+    spotPrice,
+    netGamma,
+    flipLevel,
+    levels: levels.slice(0, 20), // top 20 strikes around spot
+  };
 }
 
-// ─── BILLING PORTAL ───────────────────────────────────────────────────────────
-export async function createBillingPortalSession(
-  stripeCustomerId: string,
-  returnUrl: string
-): Promise<string> {
-  const session = await stripe.billingPortal.sessions.create({
-    customer:   stripeCustomerId,
-    return_url: returnUrl,
-  });
-  return session.url;
+// ── Stock quote ───────────────────────────────────────────────
+
+export async function getQuote(ticker: string): Promise<{ price: number; change: number; changePct: number }> {
+  const data = await polygonFetch<any>(`/v2/snapshot/locale/us/markets/stocks/tickers/${ticker}`);
+  const t = data.ticker;
+  return {
+    price:     t?.day?.c ?? 0,
+    change:    t?.todaysChange ?? 0,
+    changePct: t?.todaysChangePerc ?? 0,
+  };
 }
 
-// ─── CHECKOUT SESSION ─────────────────────────────────────────────────────────
-export async function createCheckoutSession({
-  priceId,
-  clerkId,
-  email,
-  successUrl,
-  cancelUrl,
-}: {
-  priceId:    string;
-  clerkId:    string;
-  email:      string;
-  successUrl: string;
-  cancelUrl:  string;
-}): Promise<string> {
-  const session = await stripe.checkout.sessions.create({
-    mode:               'subscription',
-    payment_method_types: ['card'],
-    customer_email:     email,
-    line_items:         [{ price: priceId, quantity: 1 }],
-    success_url:        successUrl,
-    cancel_url:         cancelUrl,
-    metadata:           { clerkId },
-    subscription_data:  { metadata: { clerkId } },
-  });
-  return session.url!;
+// ── Previous close ────────────────────────────────────────────
+
+export async function getPrevClose(ticker: string): Promise<number> {
+  const data = await polygonFetch<any>(`/v2/aggs/ticker/${ticker}/prev`);
+  return data.results?.[0]?.c ?? 0;
 }
