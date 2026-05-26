@@ -833,8 +833,8 @@ export default function Homepage() {
             <div className="nav-status-dot"/>
             Markets Open
           </div>
-          <button className="nav-login">Log in</button>
-          <button className="nav-cta">Start Free →</button>
+          <button className="nav-login" onClick={() => window.location.href='/sign-in'}>Log in</button>
+          <button className="nav-cta" onClick={() => window.location.href='/sign-up'}>Start Free →</button>
         </div>
       </nav>
 
@@ -873,7 +873,7 @@ export default function Homepage() {
           </p>
 
           <div className="hero-actions">
-            <button className="btn-primary">Start Free — No Card</button>
+            <button className="btn-primary" onClick={() => window.location.href='/sign-up'}>Start Free — No Card</button>
             <button className="btn-ghost">
               <span>▶</span> Watch 2-min demo
             </button>
@@ -1060,7 +1060,7 @@ export default function Homepage() {
             <p className="discord-cta-sub">
               Free members get delayed whale alerts. Pro subscribers unlock real-time channels, GEX levels, and direct analyst access.
             </p>
-            <button className="btn-discord">
+            <button className="btn-discord" onClick={() => window.location.href='/discord'}>
               <span>💬</span> Join on Discord
             </button>
             <div className="discord-member-preview">
@@ -1098,7 +1098,7 @@ export default function Homepage() {
             ))}
           </div>
           <div style={{textAlign:"center"}}>
-            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}}>
+            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}} onClick={() => window.location.href='/pricing'}>
               See Full Pricing + API Plans →
             </button>
           </div>
@@ -1114,9 +1114,9 @@ export default function Homepage() {
           Free account. No credit card. Six fathoms of data in 60 seconds.
         </p>
         <div className="final-cta-actions">
-          <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}}>
-            Create Free Account
-          </button>
+        <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}} onClick={() => window.location.href='/sign-up'}>
+        Create Free Account
+        </button>
           <button className="btn-ghost" style={{fontSize:"15px",padding:"15px 28px"}}>
             View Live Demo
           </button>
