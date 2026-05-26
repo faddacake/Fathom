@@ -1,30 +1,22 @@
-// ─── Error handlers ───────────────────────────────────────────────────────────
+'use strict';
+require('dotenv').config();
+const { Client, GatewayIntentBits, Events } = require('discord.js');
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+  ]
+});
+
+client.once(Events.ClientReady, (c) => {
+  console.log(`✅ Fathom Bot online — logged in as ${c.user.tag}`);
+  console.log(`📡 Serving ${c.guilds.cache.size} server(s)`);
+});
+
 client.on(Events.Error, (err) => {
-  logger.error('Discord client error:', err);
+  console.error('[bot] error:', err);
 });
- 
-process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled promise rejection:', err);
-});
- 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received — shutting down gracefully…');
-  alertEngine.stop();
-  autoPostSvc.stop();
-  await client.destroy();
-  process.exit(0);
-});
- 
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received — shutting down gracefully…');
-  alertEngine.stop();
-  autoPostSvc.stop();
-  await client.destroy();
-  process.exit(0);
-});
- 
-// ─── Login ────────────────────────────────────────────────────────────────────
-client.login(process.env.DISCORD_TOKEN).catch((err) => {
-  logger.error('Failed to log in:', err.message);
-  process.exit(1);
-});
+
+client.login(process.env.DISCORD_BOT_TOKEN);
