@@ -234,7 +234,7 @@ async function updateUsageRecord(
   cost: number
 ): Promise<void> {
   // Use a raw SQL upsert to atomically increment the jsonb endpoint_counts
-  await supabase.rpc('increment_api_usage', {
+  await (supabase as any).rpc('increment_api_usage', {
     p_user_id:   userId,
     p_week_start: weekStart,
     p_endpoint:   endpoint,
