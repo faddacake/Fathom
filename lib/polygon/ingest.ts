@@ -240,7 +240,7 @@ function fetchJSON(url: string): Promise<any> {
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try { resolve(JSON.parse(data)); }
-        catch { reject(new Error('JSON parse error')); }
+        catch (e) { console.error('[fetch] JSON parse error', e.message); resolve(null); }
       });
     }).on('error', reject);
   });
