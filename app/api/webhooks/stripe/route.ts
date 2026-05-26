@@ -169,7 +169,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription): Promise<void
       .insert({ clerk_id: `stripe:${customerId}`, email: customer.email, stripe_customer_id: customerId })
       .select()
       .single();
-    user = data;
+    user = data as any;
   }
 
   if (!user) return;
