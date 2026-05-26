@@ -14,7 +14,7 @@ import type { Database } from '@/lib/supabase/types';
 // ── Clients ──────────────────────────────────────────────────
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2024-04-10',
 });
 
 // Service-role client: bypasses RLS, safe for server-side only
