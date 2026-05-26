@@ -77,7 +77,7 @@ export const DELETE = withApiAuth('/v1/alerts/feed', async (req, ctx) => {
     .eq('id', id)
     .single();
 
-  if (!rule || rule.userId !== ctx.userId) {
+  if (!rule || (rule as any).userId !== ctx.userId) {
     return err('Alert rule not found', 'NOT_FOUND', 404);
   }
 
