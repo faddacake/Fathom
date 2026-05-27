@@ -1,0 +1,23 @@
+{
+  "name": "fathom-ingest-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/polygon-ingest.js",
+    "dev": "ts-node --project tsconfig.json polygon-ingest.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "@upstash/redis": "^1.31.0",
+    "dotenv": "^17.4.2",
+    "winston": "^3.13.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}
