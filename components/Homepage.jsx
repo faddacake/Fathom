@@ -1,10 +1,7 @@
+'use client';
 import { useState, useEffect, useRef, useCallback } from "react";
-
-// ─── FONTS ────────────────────────────────────────────────────────────────────
-const fl = document.createElement("link");
-fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap";
-fl.rel = "stylesheet";
-document.head.appendChild(fl);
+import { SignUpButton } from "@clerk/nextjs";
+import NavBar from "./NavBar";
 
 // ─── FAKE DATA ────────────────────────────────────────────────────────────────
 const TICKERS = ["NVDA","SPY","QQQ","TSLA","AAPL","MSFT","META","AMZN","AMD","PLTR","COIN","SMCI"];
@@ -79,6 +76,7 @@ const FEATURES = [
     bullets: ["Live sweep & block detection", "Premium, OI, and volume filters", "Sector & ticker heatmaps", "Historical flow downloads"],
     accent: "#00e5b4",
     preview: "flow",
+    exploreHref: "/#features",
   },
   {
     id: "dark-pool",
@@ -89,6 +87,7 @@ const FEATURES = [
     bullets: ["Real-time off-exchange prints", "Accumulation vs distribution signals", "Ticker-level dark pool history", "Cross-reference with options flow"],
     accent: "#7c6fff",
     preview: "dark",
+    exploreHref: "/#dark-pool",
   },
   {
     id: "congress",
@@ -99,6 +98,7 @@ const FEATURES = [
     bullets: ["All disclosed trades indexed live", "Committee seat cross-reference", "Portfolio tracking by politician", "Historical performance stats"],
     accent: "#f0b429",
     preview: "congress",
+    exploreHref: "/#congress",
   },
 ];
 
@@ -132,23 +132,6 @@ function useInView(threshold = 0.2) {
   return [ref, inView];
 }
 
-// ─── MARKET STATUS HOOK ───────────────────────────────────────────────────────
-function useMarketStatus() {
-  const check = () => {
-    const etStr = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-    const et    = new Date(etStr);
-    const day   = et.getDay();                          // 0=Sun … 6=Sat
-    const mins  = et.getHours() * 60 + et.getMinutes();
-    return day >= 1 && day <= 5 && mins >= 570 && mins < 960; // 9:30–16:00 ET
-  };
-  const [open, setOpen] = useState(check);
-  useEffect(() => {
-    const id = setInterval(() => setOpen(check()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-  return open;
-}
-
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const S = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap');
@@ -174,34 +157,6 @@ button{font-family:var(--ff-body);}
 ::-webkit-scrollbar-track{background:var(--bg);}
 ::-webkit-scrollbar-thumb{background:var(--teal-m);border-radius:2px;}
 
-/* ── NAV ── */
-.nav{
-  position:fixed;top:0;left:0;right:0;z-index:100;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 32px;height:64px;
-  background:rgba(6,8,16,0.82);
-  backdrop-filter:blur(16px);
-  border-bottom:1px solid var(--border);
-}
-.nav-logo{
-  display:flex;align-items:center;gap:10px;
-  font-family:var(--ff-display);font-size:22px;letter-spacing:0.04em;color:var(--text);
-}
-.nav-logo-mark{
-  width:30px;height:30px;background:var(--teal);border-radius:7px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:14px;font-weight:700;color:#060810;
-}
-.nav-links{display:flex;align-items:center;gap:28px;}
-.nav-link{font-size:13.5px;color:var(--muted);transition:color .15s;font-weight:500;}
-.nav-link:hover{color:var(--text);}
-.nav-actions{display:flex;align-items:center;gap:10px;}
-.nav-login{font-size:13px;color:var(--muted);padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;cursor:pointer;transition:all .15s;}
-.nav-login:hover{color:var(--text);border-color:rgba(255,255,255,0.2);}
-.nav-cta{font-size:13px;font-weight:600;padding:9px 18px;border-radius:8px;background:var(--teal);color:#060810;border:none;cursor:pointer;transition:all .15s;letter-spacing:0.02em;}
-.nav-cta:hover{background:#00ffcc;box-shadow:0 4px 16px rgba(0,229,180,0.35);}
-.nav-status{display:flex;align-items:center;gap:6px;font-family:var(--ff-mono);font-size:11px;color:var(--muted);padding:5px 10px;background:var(--s1);border:1px solid var(--border);border-radius:6px;}
-.nav-status-dot{width:6px;height:6px;border-radius:50%;background:#3ecf4f;box-shadow:0 0 6px #3ecf4f;animation:blink 2s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}
 
 /* ── TICKER TAPE ── */
@@ -656,8 +611,8 @@ button{font-family:var(--ff-body);}
 
 /* ── RESPONSIVE ── */
 @media(max-width:900px){
-  .hero{grid-template-columns:1fr;padding:140px 24px 60px;}
-  .hero-right{display:none;}
+  .hero{grid-template-columns:1fr;padding:140px 24px 60px;flex-direction:column;}
+  .hero-right{max-height:340px;overflow:hidden;}
   .stats-inner{grid-template-columns:repeat(2,1fr);}
   .feature-block{grid-template-columns:1fr;}
   .feature-block.reverse{direction:ltr;}
@@ -666,13 +621,32 @@ button{font-family:var(--ff-body);}
   .mini-plans{grid-template-columns:repeat(2,1fr);}
   .testi-grid{grid-template-columns:1fr;}
   .footer-top{grid-template-columns:1fr 1fr;}
-  .nav-links{display:none;}
-  .nav-status{display:none;}
 }
 
 /* ── REVEAL ANIMATION ── */
 .reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease;}
 .reveal.in{opacity:1;transform:translateY(0);}
+
+/* ── VIDEO MODAL ── */
+.video-modal-backdrop{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,0.85);
+  display:flex;align-items:center;justify-content:center;
+}
+.video-modal-inner{
+  position:relative;width:min(860px,92vw);
+  aspect-ratio:16/9;background:#000;
+  border-radius:12px;overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,0.7);
+}
+.video-modal-close{
+  position:absolute;top:12px;right:12px;
+  background:rgba(0,0,0,0.7);color:#fff;
+  border:none;border-radius:50%;
+  width:32px;height:32px;
+  font-size:18px;cursor:pointer;line-height:1;
+  z-index:1;
+}
 `;
 
 // ─── FLOW ROW COMPONENT ────────────────────────────────────────────────────────
@@ -792,21 +766,35 @@ function FeaturePreview({ type, accent }) {
   );
 }
 
-// ─── MAIN ─────────────────────────────────────────────────────────────────────
-const NAV_LINKS = [
-  { label: "Features",  href: "#features"  },
-  { label: "Dark Pool", href: "#dark-pool" },
-  { label: "Congress",  href: "#congress"  },
-  { label: "API",       href: "#api"       },
-  { label: "Pricing",   href: "#pricing"   },
-  { label: "Discord",   href: "#discord"   },
-];
+// ─── VIDEO MODAL ──────────────────────────────────────────────────────────────
+function VideoModal({ onClose }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
+  return (
+    <div className="video-modal-backdrop" onClick={onClose}>
+      <div className="video-modal-inner" onClick={e => e.stopPropagation()}>
+        <iframe
+          src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"
+          title="Fathom Demo"
+          allow="autoplay; fullscreen"
+          style={{width:"100%",height:"100%",border:"none"}}
+        />
+        <button className="video-modal-close" onClick={onClose} aria-label="Close demo">×</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function Homepage() {
   const [rows, setRows] = useState(INITIAL_ROWS);
   const [alertCount, setAlertCount] = useState(1247);
   const [statsRef, statsInView] = useInView(0.3);
-  const marketOpen = useMarketStatus();
+  const [demoOpen, setDemoOpen] = useState(false);
 
   // live flow feed
   useEffect(() => {
@@ -847,25 +835,7 @@ export default function Homepage() {
       <style>{S}</style>
 
       {/* ── NAV ── */}
-      <nav className="nav">
-        <div className="nav-logo">
-          <div className="nav-logo-mark">F</div>
-          FATHOM
-        </div>
-        <div className="nav-links">
-          {NAV_LINKS.map(({ label, href }) => (
-            <a key={label} href={href} className="nav-link">{label}</a>
-          ))}
-        </div>
-        <div className="nav-actions">
-          <div className="nav-status" style={{ borderColor: marketOpen ? "rgba(62,207,79,0.3)" : "rgba(255,77,109,0.3)" }}>
-            <div className="nav-status-dot" style={{ background: marketOpen ? "#3ecf4f" : "#ff4d6d", boxShadow: marketOpen ? "0 0 6px #3ecf4f" : "0 0 6px #ff4d6d" }}/>
-            {marketOpen ? "Markets Open" : "Markets Closed"}
-          </div>
-          <button className="nav-login">Log in</button>
-          <button className="nav-cta">Start Free →</button>
-        </div>
-      </nav>
+      <NavBar />
 
       {/* ── TICKER TAPE ── */}
       <div className="ticker-wrap">
@@ -902,8 +872,10 @@ export default function Homepage() {
           </p>
 
           <div className="hero-actions">
-            <button className="btn-primary" onClick={() => window.location.href="/sign-up"}>Start Free — No Card</button>
-            <button className="btn-ghost" onClick={() => window.location.href="/dashboard"}>
+            <SignUpButton mode="modal">
+              <button className="btn-primary">Start Free — No Card</button>
+            </SignUpButton>
+            <button className="btn-ghost" onClick={() => setDemoOpen(true)}>
               <span>▶</span> Watch 2-min demo
             </button>
           </div>
@@ -987,9 +959,9 @@ export default function Homepage() {
                   </li>
                 ))}
               </ul>
-              <div className="feat-link" style={{color:f.accent}}>
+              <a href={f.exploreHref} className="feat-link" style={{color:f.accent}}>
                 Explore {f.label} →
-              </div>
+              </a>
             </div>
             <FeaturePreview type={f.preview} accent={f.accent}/>
           </div>
@@ -1144,10 +1116,12 @@ export default function Homepage() {
           Free account. No credit card. Six fathoms of data in 60 seconds.
         </p>
         <div className="final-cta-actions">
-          <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}}>
-            Create Free Account
-          </button>
-          <button className="btn-ghost" style={{fontSize:"15px",padding:"15px 28px"}}>
+          <SignUpButton mode="modal">
+            <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}}>
+              Create Free Account
+            </button>
+          </SignUpButton>
+          <button className="btn-ghost" style={{fontSize:"15px",padding:"15px 28px"}} onClick={() => setDemoOpen(true)}>
             View Live Demo
           </button>
         </div>
@@ -1158,21 +1132,48 @@ export default function Homepage() {
       <footer className="footer">
         <div className="footer-top">
           <div className="footer-brand">
-            <div className="nav-logo" style={{marginBottom:"0"}}>
-              <div className="nav-logo-mark">F</div>
+            <div className="nb-logo" style={{marginBottom:"0"}}>
+              <div className="nb-logo-mark">F</div>
               FATHOM
             </div>
             <p>We measure what others can't see. Options flow, dark pool data, and congressional trades — surfaced in real time for independent traders.</p>
           </div>
           {[
-            {title:"Product", links:["Options Flow","Dark Pool","Congress Trades","Screeners","Alerts","Mobile App"]},
-            {title:"Developers", links:["API Docs","API Pricing","MCP Server","Webhooks","Status Page","Changelog"]},
-            {title:"Company", links:["About","Blog","Discord","Twitter / X","Privacy Policy","Terms of Service"]},
+            {title:"Product", links:[
+              {label:"Options Flow",    href:"/#features"},
+              {label:"Dark Pool",       href:"/#dark-pool"},
+              {label:"Congress Trades", href:"/#congress"},
+              {label:"Screeners",       href:"/dashboard"},
+              {label:"Alerts",          href:"/dashboard"},
+              {label:"Mobile App",      href:"/#coming-soon"},
+            ]},
+            {title:"Developers", links:[
+              {label:"API Docs",    href:"/pricing#api"},
+              {label:"API Pricing", href:"/pricing#api"},
+              {label:"MCP Server",  href:"/pricing#api"},
+              {label:"Webhooks",    href:"/pricing#api"},
+              {label:"Status Page", href:"https://status.fathomtrade.com", external:true},
+              {label:"Changelog",   href:"/changelog"},
+            ]},
+            {title:"Company", links:[
+              {label:"About",            href:"/about"},
+              {label:"Blog",             href:"/blog"},
+              {label:"Discord",          href:"https://discord.gg/CgYANHDQs", external:true},
+              {label:"Twitter / X",      href:"https://twitter.com/fathomtrade", external:true},
+              {label:"Privacy Policy",   href:"/legal/privacy"},
+              {label:"Terms of Service", href:"/legal/terms"},
+            ]},
           ].map((col,i) => (
             <div key={i}>
               <div className="footer-col-title">{col.title}</div>
               <ul className="footer-links">
-                {col.links.map(l => <li key={l}><a href="#">{l}</a></li>)}
+                {col.links.map(l => (
+                  <li key={l.label}>
+                    <a href={l.href} {...(l.external ? {target:"_blank",rel:"noopener noreferrer"} : {})}>
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
               </ul>
             </div>
           ))}
@@ -1185,6 +1186,8 @@ export default function Homepage() {
           Fathom is not a registered investment advisor. Options trading involves significant risk of loss. All data is provided for informational purposes only and should not be construed as investment advice. Past performance of any signal or indicator is not indicative of future results.
         </p>
       </footer>
+
+      {demoOpen && <VideoModal onClose={() => setDemoOpen(false)} />}
     </>
   );
 }

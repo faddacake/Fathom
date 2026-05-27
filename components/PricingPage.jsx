@@ -1,11 +1,8 @@
 'use client';
 import { useState, useEffect, useRef } from "react";
-
-// ─── FONTS ────────────────────────────────────────────────────────────────────
-const fontLink = document.createElement("link");
-fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap";
-fontLink.rel = "stylesheet";
-document.head.appendChild(fontLink);
+import { useUser, SignUpButton } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import NavBar from "./NavBar";
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const styles = `
@@ -722,7 +719,7 @@ const CheckIcon = ({ active }) => (
   </div>
 );
 
-function PlanCard({ plan, isAnnual, isFree }) {
+function PlanCard({ plan, isAnnual, isFree, isSignedIn, onUpgrade }) {
   const price = isFree ? plan.price
     : isAnnual ? plan.price?.annual : plan.price?.monthly;
 
@@ -779,9 +776,27 @@ function PlanCard({ plan, isAnnual, isFree }) {
         ))}
       </ul>
 
-      <button className={`cta-btn ${plan.highlight ? "primary" : "secondary"}`}>
-        {plan.cta}
-      </button>
+      {(() => {
+        const cls = `cta-btn ${plan.highlight ? "primary" : "secondary"}`;
+        if (plan.cta === "Start Free" || plan.cta === "Get Started") {
+          return (
+            <SignUpButton mode="modal">
+              <button className={cls}>{plan.cta}</button>
+            </SignUpButton>
+          );
+        }
+        if (plan.cta === "Go Pro") {
+          return isSignedIn
+            ? <button className={cls} onClick={() => onUpgrade("pro")}>{plan.cta}</button>
+            : <SignUpButton mode="modal" redirectUrl="/dashboard?upgrade=pro"><button className={cls}>{plan.cta}</button></SignUpButton>;
+        }
+        if (plan.cta === "Go Whale") {
+          return isSignedIn
+            ? <button className={cls} onClick={() => onUpgrade("whale")}>{plan.cta}</button>
+            : <SignUpButton mode="modal" redirectUrl="/dashboard?upgrade=whale"><button className={cls}>{plan.cta}</button></SignUpButton>;
+        }
+        return <button className={cls}>{plan.cta}</button>;
+      })()}
     </div>
   );
 }
@@ -791,16 +806,32 @@ export default function PricingPage() {
   const [activeTab, setActiveTab] = useState("platform");
   const [isAnnual, setIsAnnual] = useState(false);
   const [tabKey, setTabKey] = useState(0);
+  const cardsRef = useRef(null);
+  const { isSignedIn } = useUser();
+  const router = useRouter();
+
+  // Switch to API tab when navigated to via #api hash
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#api") {
+      setActiveTab("api");
+    }
+  }, []);
 
   const switchTab = (tab) => {
     setActiveTab(tab);
     setTabKey(k => k + 1);
+    setTimeout(() => {
+      cardsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   };
 
   return (
     <>
       <style>{styles}</style>
-      <div className="pricing-root">
+      <NavBar />
+      {/* Hidden anchor so /pricing#api links scroll to the right place */}
+      <div id="api" style={{position:"absolute",top:0,visibility:"hidden"}} aria-hidden="true" />
+      <div className="pricing-root" style={{paddingTop:"64px"}}>
         <div className="orb orb-1" />
         <div className="orb orb-2" />
 
@@ -845,7 +876,7 @@ export default function PricingPage() {
                 <div className="toggle-knob" />
               </div>
               <span style={isAnnual ? {color:"#e8edf5"} : {}}>Annual</span>
-              {isAnnual && <div className="annual-badge">Save ~20%</div>}
+              {isAnnual && <div className="annual-badge">Save up to 19%</div>}
             </div>
           )}
 
@@ -863,11 +894,18 @@ export default function PricingPage() {
         </div>
 
         {/* ── CARDS ── */}
-        <div key={tabKey} className="tab-content">
+        <div key={tabKey} className="tab-content" ref={cardsRef}>
           {activeTab === "platform" && (
             <div className="cards-grid">
               {platformPlans.map((plan, i) => (
-                <PlanCard key={i} plan={plan} isAnnual={isAnnual} isFree={false} />
+                <PlanCard
+                  key={i}
+                  plan={plan}
+                  isAnnual={isAnnual}
+                  isFree={false}
+                  isSignedIn={isSignedIn}
+                  onUpgrade={(tier) => router.push(`/dashboard?upgrade=${tier}`)}
+                />
               ))}
             </div>
           )}
