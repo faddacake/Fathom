@@ -1128,7 +1128,7 @@ export default function Homepage() {
             ))}
           </div>
           <div style={{textAlign:"center"}}>
-            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}}>
+            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}} onClick={() => window.location.href="/pricing"}>
               See Full Pricing + API Plans →
             </button>
           </div>
