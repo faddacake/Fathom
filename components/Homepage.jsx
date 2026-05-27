@@ -902,8 +902,8 @@ export default function Homepage() {
           </p>
 
           <div className="hero-actions">
-            <button className="btn-primary">Start Free — No Card</button>
-            <button className="btn-ghost">
+            <button className="btn-primary" onClick={() => window.location.href="/sign-up"}>Start Free — No Card</button>
+            <button className="btn-ghost" onClick={() => window.location.href="/dashboard">
               <span>▶</span> Watch 2-min demo
             </button>
           </div>
@@ -1089,7 +1089,7 @@ export default function Homepage() {
             <p className="discord-cta-sub">
               Free members get delayed whale alerts. Pro subscribers unlock real-time channels, GEX levels, and direct analyst access.
             </p>
-            <button className="btn-discord">
+            <button className="btn-discord" onClick={() => window.open("https://discord.gg/CgYANHDQs","_blank")}>
               <span>💬</span> Join on Discord
             </button>
             <div className="discord-member-preview">

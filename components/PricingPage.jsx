@@ -906,7 +906,7 @@ export default function PricingPage() {
             <>
               <div className="cards-grid">
                 {discordPlans.map((plan, i) => (
-                  <PlanCard key={i} plan={plan} isAnnual={false} isFree={false} />
+                  <PlanCard key={i} plan={plan} isAnnual={false} isFree={true} />
                 ))}
               </div>
 
