@@ -1,11 +1,10 @@
-'use client';
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── FONTS ────────────────────────────────────────────────────────────────────
-
-
-
-
+const fl = document.createElement("link");
+fl.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap";
+fl.rel = "stylesheet";
+document.head.appendChild(fl);
 
 // ─── FAKE DATA ────────────────────────────────────────────────────────────────
 const TICKERS = ["NVDA","SPY","QQQ","TSLA","AAPL","MSFT","META","AMZN","AMD","PLTR","COIN","SMCI"];
@@ -72,6 +71,7 @@ const TESTIMONIALS = [
 
 const FEATURES = [
   {
+    id: "features",
     icon: "⚡",
     label: "Options Flow",
     title: "Every sweep. Every block. In real time.",
@@ -81,6 +81,7 @@ const FEATURES = [
     preview: "flow",
   },
   {
+    id: "dark-pool",
     icon: "🌊",
     label: "Dark Pool",
     title: "Off-exchange prints the public never sees.",
@@ -90,6 +91,7 @@ const FEATURES = [
     preview: "dark",
   },
   {
+    id: "congress",
     icon: "🏛️",
     label: "Congress Trades",
     title: "Follow the money inside the Capitol.",
@@ -128,6 +130,23 @@ function useInView(threshold = 0.2) {
     return () => obs.disconnect();
   }, [threshold]);
   return [ref, inView];
+}
+
+// ─── MARKET STATUS HOOK ───────────────────────────────────────────────────────
+function useMarketStatus() {
+  const check = () => {
+    const etStr = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    const et    = new Date(etStr);
+    const day   = et.getDay();                          // 0=Sun … 6=Sat
+    const mins  = et.getHours() * 60 + et.getMinutes();
+    return day >= 1 && day <= 5 && mins >= 570 && mins < 960; // 9:30–16:00 ET
+  };
+  const [open, setOpen] = useState(check);
+  useEffect(() => {
+    const id = setInterval(() => setOpen(check()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  return open;
 }
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
@@ -774,10 +793,20 @@ function FeaturePreview({ type, accent }) {
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
+const NAV_LINKS = [
+  { label: "Features",  href: "#features"  },
+  { label: "Dark Pool", href: "#dark-pool" },
+  { label: "Congress",  href: "#congress"  },
+  { label: "API",       href: "#api"       },
+  { label: "Pricing",   href: "#pricing"   },
+  { label: "Discord",   href: "#discord"   },
+];
+
 export default function Homepage() {
   const [rows, setRows] = useState(INITIAL_ROWS);
   const [alertCount, setAlertCount] = useState(1247);
   const [statsRef, statsInView] = useInView(0.3);
+  const marketOpen = useMarketStatus();
 
   // live flow feed
   useEffect(() => {
@@ -824,17 +853,17 @@ export default function Homepage() {
           FATHOM
         </div>
         <div className="nav-links">
-          {["Features","Dark Pool","Congress","API","Pricing","Discord"].map(l => (
-            <a key={l} href="#" className="nav-link">{l}</a>
+          {NAV_LINKS.map(({ label, href }) => (
+            <a key={label} href={href} className="nav-link">{label}</a>
           ))}
         </div>
         <div className="nav-actions">
-          <div className="nav-status">
-            <div className="nav-status-dot"/>
-            Markets Open
+          <div className="nav-status" style={{ borderColor: marketOpen ? "rgba(62,207,79,0.3)" : "rgba(255,77,109,0.3)" }}>
+            <div className="nav-status-dot" style={{ background: marketOpen ? "#3ecf4f" : "#ff4d6d", boxShadow: marketOpen ? "0 0 6px #3ecf4f" : "0 0 6px #ff4d6d" }}/>
+            {marketOpen ? "Markets Open" : "Markets Closed"}
           </div>
-          <button className="nav-login" onClick={() => window.location.href='/sign-in'}>Log in</button>
-          <button className="nav-cta" onClick={() => window.location.href='/sign-up'}>Start Free →</button>
+          <button className="nav-login">Log in</button>
+          <button className="nav-cta">Start Free →</button>
         </div>
       </nav>
 
@@ -873,7 +902,7 @@ export default function Homepage() {
           </p>
 
           <div className="hero-actions">
-            <button className="btn-primary" onClick={() => window.location.href='/sign-up'}>Start Free — No Card</button>
+            <button className="btn-primary">Start Free — No Card</button>
             <button className="btn-ghost">
               <span>▶</span> Watch 2-min demo
             </button>
@@ -934,7 +963,7 @@ export default function Homepage() {
       </div>
 
       {/* ── FEATURES ── */}
-      <div className="section">
+      <div id="features" className="section">
         <div className="reveal">
           <div className="section-eyebrow">Core Products</div>
           <h2 className="section-title">THREE INSTRUMENTS.<br/>ONE UNFAIR DEPTH.</h2>
@@ -942,7 +971,7 @@ export default function Homepage() {
         </div>
 
         {FEATURES.map((f, i) => (
-          <div key={i} className={`feature-block reveal ${i%2===1?"reverse":""}`}>
+          <div key={i} id={f.id} className={`feature-block reveal ${i%2===1?"reverse":""}`}>
             <div>
               <div className="feat-label"
                 style={{color:f.accent, borderColor:`${f.accent}40`, background:`${f.accent}10`}}>
@@ -1030,7 +1059,7 @@ export default function Homepage() {
       </div>
 
       {/* ── DISCORD CTA ── */}
-      <div className="discord-section">
+      <div id="discord" className="discord-section">
         <div className="discord-inner">
           <div className="reveal">
             <div className="section-eyebrow">Community</div>
@@ -1060,7 +1089,7 @@ export default function Homepage() {
             <p className="discord-cta-sub">
               Free members get delayed whale alerts. Pro subscribers unlock real-time channels, GEX levels, and direct analyst access.
             </p>
-            <button className="btn-discord" onClick={() => window.location.href='/discord'}>
+            <button className="btn-discord">
               <span>💬</span> Join on Discord
             </button>
             <div className="discord-member-preview">
@@ -1073,7 +1102,8 @@ export default function Homepage() {
       </div>
 
       {/* ── PRICING PREVIEW ── */}
-      <div className="pricing-preview">
+      <div id="pricing" className="pricing-preview">
+        <a id="api" style={{display:"block",position:"relative",top:"-80px",visibility:"hidden"}} aria-hidden="true"/>
         <div className="pricing-preview-inner">
           <div className="reveal" style={{textAlign:"center"}}>
             <div className="section-eyebrow">Pricing</div>
@@ -1098,7 +1128,7 @@ export default function Homepage() {
             ))}
           </div>
           <div style={{textAlign:"center"}}>
-            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}} onClick={() => window.location.href='/pricing'}>
+            <button className="btn-primary" style={{fontSize:"14px",padding:"14px 36px"}}>
               See Full Pricing + API Plans →
             </button>
           </div>
@@ -1114,9 +1144,9 @@ export default function Homepage() {
           Free account. No credit card. Six fathoms of data in 60 seconds.
         </p>
         <div className="final-cta-actions">
-        <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}} onClick={() => window.location.href='/sign-up'}>
-        Create Free Account
-        </button>
+          <button className="btn-primary" style={{fontSize:"15px",padding:"15px 36px"}}>
+            Create Free Account
+          </button>
           <button className="btn-ghost" style={{fontSize:"15px",padding:"15px 28px"}}>
             View Live Demo
           </button>
