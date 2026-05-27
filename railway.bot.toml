@@ -1,8 +1,8 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd fathom-bot && npm install"
+buildCommand = "npm install"
 
 [deploy]
-startCommand = "cd fathom-bot && node bot.js"
+startCommand = "node discord-bot.js"
 restartPolicyType = "always"
 restartPolicyMaxRetries = 10
