@@ -903,7 +903,7 @@ export default function Homepage() {
 
           <div className="hero-actions">
             <button className="btn-primary" onClick={() => window.location.href="/sign-up"}>Start Free — No Card</button>
-            <button className="btn-ghost" onClick={() => window.location.href="/dashboard">
+            <button className="btn-ghost" onClick={() => window.location.href="/dashboard"}>
               <span>▶</span> Watch 2-min demo
             </button>
           </div>
