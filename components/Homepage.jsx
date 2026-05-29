@@ -29,6 +29,29 @@ const makeRow = (isNew = true) => {
 
 const INITIAL_ROWS = Array.from({ length: 9 }, () => makeRow(false));
 
+// Map a flow_cache DB row to the display format used by FlowRow component
+let _dbUid = 900_000;
+function mapDbRow(r) {
+  const totalPrem = Number(r.total_premium ?? 0);
+  const expDate   = r.expiry ? new Date(r.expiry + 'T00:00:00') : null;
+  const expLabel  = expDate
+    ? expDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
+  return {
+    id:     _dbUid++,
+    ticker: r.ticker,
+    type:   r.flow_type,
+    strike: `$${r.strike}`,
+    expiry: expLabel,
+    prem:   `$${Number(r.premium).toFixed(2)}`,
+    size:   Number(r.size).toLocaleString(),
+    total:  totalPrem >= 1e6 ? `$${(totalPrem / 1e6).toFixed(2)}M` : `$${(totalPrem / 1e3).toFixed(0)}K`,
+    sweep:  r.is_sweep,
+    isNew:  false,
+    bull:   r.flow_type === 'CALL',
+  };
+}
+
 const TICKER_TAPE = [
   "🚨 $NVDA $4.2M CALL SWEEP · BULLISH",
   "🌊 $SPY DARK POOL 2.4M SHARES",
@@ -796,17 +819,80 @@ export default function Homepage() {
   const [statsRef, statsInView] = useInView(0.3);
   const [demoOpen, setDemoOpen] = useState(false);
 
-  // live flow feed
+  // live flow feed — Supabase Realtime with mock fallback
   useEffect(() => {
-    const id = setInterval(() => {
-      const newRow = makeRow(true);
-      setRows(prev => {
-        const next = [newRow, ...prev.slice(0, 8)];
-        return next;
-      });
-      setAlertCount(c => c + 1);
-    }, 2200);
-    return () => clearInterval(id);
+    let mounted  = true;
+    let interval = null;
+    let channel  = null;
+
+    const startMock = () => {
+      if (interval) return;
+      interval = setInterval(() => {
+        if (!mounted) return;
+        const newRow = makeRow(true);
+        setRows(prev => [newRow, ...prev.slice(0, 8)]);
+        setAlertCount(c => c + 1);
+      }, 2200);
+    };
+
+    const connect = async () => {
+      try {
+        const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseAnon) { startMock(); return; }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const client = createClient(supabaseUrl, supabaseAnon);
+
+        // Fetch initial delayed rows (10-min delay for unauth homepage)
+        const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data } = await client
+          .from('flow_cache')
+          .select('*')
+          .lt('traded_at', cutoff)
+          .order('traded_at', { ascending: false })
+          .limit(9);
+
+        if (!mounted) return;
+
+        if (data && data.length > 0) {
+          setRows(data.map(r => mapDbRow(r)));
+        } else {
+          startMock();
+        }
+
+        // Subscribe to new inserts — we get them but display is static for
+        // the marketing page (all new rows are too fresh for the delay filter)
+        channel = client
+          .channel('homepage_flow')
+          .on('postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'flow_cache' },
+            (payload) => {
+              if (!mounted) return;
+              const age = Date.now() - new Date(payload.new.traded_at).getTime();
+              if (age >= 10 * 60 * 1000) {
+                const row = mapDbRow(payload.new);
+                setRows(prev => [{ ...row, isNew: true }, ...prev.slice(0, 8)]);
+                setAlertCount(c => c + 1);
+              }
+            })
+          .subscribe((status) => {
+            if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && mounted) {
+              startMock();
+            }
+          });
+      } catch {
+        if (mounted) startMock();
+      }
+    };
+
+    void connect();
+
+    return () => {
+      mounted = false;
+      if (interval) clearInterval(interval);
+      channel?.unsubscribe();
+    };
   }, []);
 
   // clear isNew flag after animation
@@ -1091,7 +1177,7 @@ export default function Homepage() {
               {name:"Pro",     price:"$59",  per:"/mo",    features:["Unlimited alerts","GEX data","1yr history"],   hl:true},
               {name:"Whale",   price:"$97",  per:"/mo",    features:["Everything","API access","Analyst support"]},
             ].map((p,i) => (
-              <div key={i} className={`mini-plan ${p.hl?"hl":""}`}>
+              <div key={i} className={`mini-plan ${p.hl?"hl":""}`} onClick={() => window.location.href="/pricing"} style={{cursor:"pointer"}}>
                 <div className="mini-name">{p.name}</div>
                 <div className="mini-price"><em>{p.price}</em></div>
                 <div className="mini-per">{p.per}</div>
